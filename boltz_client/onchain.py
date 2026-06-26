@@ -29,9 +29,7 @@ def validate_address(address: str, network: str, pair: str) -> str:
         }
         wally_network_name = liquid_networks[network]
         wally_network = next(
-            network
-            for network in WALLY_NETWORKS
-            if network.name == wally_network_name
+            network for network in WALLY_NETWORKS if network.name == wally_network_name
         )
         try:
             decode_address(wally, wally_network, address)
