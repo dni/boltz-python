@@ -1,43 +1,67 @@
-[tool.poetry]
+[project]
 name = "boltz_client"
 version = "0.2.2"
 description = "python boltz client"
-license = "MIT"
-authors = ["dni <office@dnilabs.com>"]
+license = { text = "MIT" }
+authors = [{ name = "dni", email = "office@dnilabs.com" }]
 readme = "README.md"
-repository = "https://github.com/dni/boltz-client-python"
-homepage = "https://boltz.exchange"
-packages = [
-  {include = "boltz_client"},
-  {include = "boltz_client/py.typed"},
+requires-python = ">=3.12"
+dependencies = [
+  "httpx>=0.23",
+  "embit>=0.7.0,<0.8",
+  "click>=8",
+  "websockets>=10",
+  "wallycore==1.5.4",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.10 | ^3.9"
-httpx = ">=0.23"
-embit = "^0.7.0"
-click = ">=8"
-websockets = ">=10"
-wallycore = "1.0.0"
+[project.urls]
+Repository = "https://github.com/dni/boltz-client-python"
+Homepage = "https://boltz.exchange"
 
-[tool.poetry.group.dev.dependencies]
-pytest-asyncio = "^0.20.3"
-isort = "^5.10.1"
-pytest = "^7.1.2"
-black = "^22.6.0"
-mypy = "^0.971"
-pylint = "^2.15.10"
-flake8 = "^6.0.0"
+[project.scripts]
+boltz = "boltz_client.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest-asyncio>=0.21",
+  "isort>=5.10.1",
+  "pytest>=7.1.2",
+  "black>=22.6.0",
+  "mypy>=0.971,<2",
+  "ruff>=0.6.0,<1",
+]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry.scripts]
-boltz = "boltz_client.cli:main"
+[tool.hatch.build.targets.wheel]
+packages = ["boltz_client"]
 
 [tool.isort]
 profile = "black"
+
+[tool.black]
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "A", "C", "N", "UP", "RUF", "B", "S"]
+ignore = ["RUF012", "RUF043"]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.per-file-ignores]
+"boltz_client/boltz.py" = ["N815", "N818"]
+"test*.py" = ["S101", "S105", "S106", "S307"]
+"tests/*" = ["S101", "S105", "S106", "S307", "S311"]
+"tests/helpers.py" = ["S602", "S603", "S607"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.mypy]
 ignore_missing_imports = "True"
@@ -45,23 +69,8 @@ files = "boltz_client"
 
 [tool.pytest.ini_options]
 log_level = "INFO"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
 testpaths = [
   "tests"
-]
-
-[tool.pylint.format]
-max-line-length = 125
-
-[tool.pylint.'MESSAGES CONTROL']
-disable = [
-  "fixme",
-  "import-outside-toplevel",
-  "invalid-name",
-  "too-many-arguments",
-  "missing-function-docstring",
-  "missing-class-docstring",
-  "too-many-instance-attributes",
-  "too-many-locals",
-  "too-many-statements",
-  "broad-exception-caught",
 ]

@@ -1,6 +1,12 @@
-check:
-	poetry run black boltz_client
-	poetry run isort boltz_client
-	poetry run mypy boltz_client
-	poetry run flake8 .
-	poetry run pylint boltz_client
+.PHONY: check format lint
+
+check: format lint
+
+format:
+	uv run ruff check . --fix
+	uv run black boltz_client
+	uv run isort boltz_client
+
+lint:
+	uv run mypy boltz_client
+	uv run ruff check .

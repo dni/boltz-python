@@ -1,8 +1,7 @@
-""" boltz_client CLI """
+"""boltz_client CLI"""
 
 import asyncio
 import json
-from typing import Optional
 
 import click
 
@@ -41,8 +40,14 @@ def create_swap(payment_request: str, pair: str = "BTC/BTC"):
 
     swap_tree_json = json.dumps(
         {
-            "claimLeaf": {"output": swap.swapTree.claimLeaf.output, "version": swap.swapTree.claimLeaf.version},
-            "refundLeaf": {"output": swap.swapTree.refundLeaf.output, "version": swap.swapTree.refundLeaf.version},
+            "claimLeaf": {
+                "output": swap.swapTree.claimLeaf.output,
+                "version": swap.swapTree.claimLeaf.version,
+            },
+            "refundLeaf": {
+                "output": swap.swapTree.refundLeaf.output,
+                "version": swap.swapTree.refundLeaf.version,
+            },
         }
     )
 
@@ -63,10 +68,19 @@ def create_swap(payment_request: str, pair: str = "BTC/BTC"):
     click.echo()
     click.echo("run this command if you need to refund:")
     click.echo("CHANGE YOUR_RECEIVEADDRESS to your onchain address!!!")
-    click.echo(
-        f"boltz refund-swap {swap.id} {refund_privkey_wif} {swap.address} YOUR_RECEIVEADDRESS "
-        f"'{swap_tree_json}' {swap.claimPublicKey} {swap.timeoutBlockHeight} {pair} {swap.blindingKey}"
-    )
+    refund_command = [
+        "boltz refund-swap",
+        swap.id,
+        refund_privkey_wif,
+        swap.address,
+        "YOUR_RECEIVEADDRESS",
+        f"'{swap_tree_json}'",
+        swap.claimPublicKey,
+        str(swap.timeoutBlockHeight),
+        pair,
+        str(swap.blindingKey),
+    ]
+    click.echo(" ".join(refund_command))
 
 
 @click.command()
@@ -88,7 +102,7 @@ def refund_swap(
     boltz_pubkey: str,
     timeout_block_height: int,
     pair: str = "BTC/BTC",
-    blinding_key: Optional[str] = None,
+    blinding_key: str | None = None,
 ):
     """
     Refund a failed submarine swap.
@@ -122,7 +136,8 @@ def create_reverse_swap(sats: int, pair: str = "BTC/BTC", direction: str = "send
     """
     Create a reverse swap (Lightning → on-chain).
 
-    SATS is the on-chain amount to receive (direction=send) or the lightning amount to pay (direction=receive).
+    SATS is the on-chain amount to receive (direction=send) or the lightning
+    amount to pay (direction=receive).
     """
     client = BoltzClient(config, pair)
     if direction == SwapDirection.receive:
@@ -137,8 +152,14 @@ def create_reverse_swap(sats: int, pair: str = "BTC/BTC", direction: str = "send
 
     swap_tree_json = json.dumps(
         {
-            "claimLeaf": {"output": swap.swapTree.claimLeaf.output, "version": swap.swapTree.claimLeaf.version},
-            "refundLeaf": {"output": swap.swapTree.refundLeaf.output, "version": swap.swapTree.refundLeaf.version},
+            "claimLeaf": {
+                "output": swap.swapTree.claimLeaf.output,
+                "version": swap.swapTree.claimLeaf.version,
+            },
+            "refundLeaf": {
+                "output": swap.swapTree.refundLeaf.output,
+                "version": swap.swapTree.refundLeaf.version,
+            },
         }
     )
 
@@ -161,10 +182,20 @@ def create_reverse_swap(sats: int, pair: str = "BTC/BTC", direction: str = "send
     click.echo("run this command after you see the lockup transaction:")
     click.echo("CHANGE YOUR_RECEIVEADDRESS to your onchain address!!!")
     zeroconf = "true"
-    click.echo(
-        f"boltz claim-reverse-swap {swap.id} {swap.lockupAddress} YOUR_RECEIVEADDRESS "
-        f"{claim_privkey_wif} {preimage_hex} '{swap_tree_json}' {swap.refundPublicKey} {pair} {zeroconf} {swap.blindingKey}"
-    )
+    claim_command = [
+        "boltz claim-reverse-swap",
+        swap.id,
+        swap.lockupAddress,
+        "YOUR_RECEIVEADDRESS",
+        claim_privkey_wif,
+        preimage_hex,
+        f"'{swap_tree_json}'",
+        swap.refundPublicKey,
+        pair,
+        zeroconf,
+        str(swap.blindingKey),
+    ]
+    click.echo(" ".join(claim_command))
 
 
 @click.command()
@@ -252,7 +283,7 @@ def claim_reverse_swap(
     boltz_pubkey: str,
     pair: str = "BTC/BTC",
     zeroconf: bool = True,
-    blinding_key: Optional[str] = None,
+    blinding_key: str | None = None,
 ):
     """
     Claim a reverse swap output.
@@ -296,7 +327,7 @@ def swap_status(swap_id):
 @click.argument("amount", type=int)
 def calculate_swap_send_amount(amount):
     """
-    Calculate the invoice amount needed to receive AMOUNT sats on-chain via submarine swap.
+    Calculate invoice amount needed to receive AMOUNT sats on-chain.
     """
     client = BoltzClient(config)
     click.echo(client.substract_swap_fees(amount))
