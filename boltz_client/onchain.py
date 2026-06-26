@@ -76,16 +76,16 @@ def _musig2_key_agg(pk1_hex: str, pk2_hex: str) -> bytes:
     - Submarine swap: pk1=boltz_claim_key, pk2=our_refund_key
     - Reverse swap:   pk1=boltz_refund_key, pk2=our_claim_key
     """
-    pk1 = bytes.fromhex(pk1_hex)
+    pk1 = bytes.fromhex(pk1_hex)  # 33-byte compressed
     pk2 = bytes.fromhex(pk2_hex)
-    xonly1 = pk1[1:]  # 32-byte x-coordinate
-    xonly2 = pk2[1:]
 
-    L = tagged_hash("KeyAgg list", xonly1 + xonly2)
-    a1 = int.from_bytes(tagged_hash("KeyAgg coefficient", L + xonly1), "big") % _N
+    # Use full 33-byte compressed keys for hashing (matches @scure/btc-signer)
+    L = tagged_hash("KeyAgg list", pk1 + pk2)
+    a1 = int.from_bytes(tagged_hash("KeyAgg coefficient", L + pk1), "big") % _N
 
-    point1 = secp256k1.ec_pubkey_parse(b"\x02" + xonly1)
-    point2 = secp256k1.ec_pubkey_parse(b"\x02" + xonly2)
+    # Parse with actual y-parity (not forced even)
+    point1 = secp256k1.ec_pubkey_parse(pk1)
+    point2 = secp256k1.ec_pubkey_parse(pk2)
 
     secp256k1.ec_pubkey_tweak_mul(point1, a1.to_bytes(32, "big"))
     aggregate = secp256k1.ec_pubkey_combine(point1, point2)
