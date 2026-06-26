@@ -8,13 +8,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "httpx>=0.23",
-  "embit>=0.7.0,<0.8",
   "click>=8",
   "websockets>=10",
+  "wallycore==1.5.4",
 ]
-
-[project.optional-dependencies]
-liquid = ["wallycore==1.0.0"]
 
 [project.urls]
 Repository = "https://github.com/dni/boltz-client-python"

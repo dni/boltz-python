@@ -1,5 +1,4 @@
 import pytest_asyncio
-from embit.transaction import Transaction
 
 from boltz_client.boltz import BoltzClient, BoltzConfig
 
@@ -27,14 +26,12 @@ async def client_liquid():
 
 @pytest_asyncio.fixture(scope="session")
 async def raw_tx_invalid():
-    tx = Transaction()
-    yield bytes.hex(tx.serialize())
+    yield "02000000000000000000"
 
 
 @pytest_asyncio.fixture(scope="session")
 async def raw_tx():
-    tx = Transaction()
-    yield bytes.hex(tx.serialize())
+    yield "02000000000000000000"
 
 
 @pytest_asyncio.fixture(scope="session")
