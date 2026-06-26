@@ -8,9 +8,7 @@ from boltz_client.onchain_wally import (
     is_possible_confidential_address,
 )
 
-wally = pytest.importorskip(
-    "wallycore", reason="wallycore not installed (pip install boltz_client[liquid])"
-)
+wally = pytest.importorskip("wallycore", reason="wallycore is required")
 
 
 @pytest.mark.parametrize(

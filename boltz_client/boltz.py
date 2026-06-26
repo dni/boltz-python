@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from math import ceil, floor
 
 import httpx
@@ -17,7 +17,7 @@ from .onchain import (
 )
 
 
-class SwapDirection(str, Enum):
+class SwapDirection(StrEnum):
     send = "send"
     receive = "receive"
 
