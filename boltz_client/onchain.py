@@ -195,7 +195,12 @@ def create_claim_tx(
     sig = privkey.schnorr_sign(sighash)._sig
 
     tx.vin[0].witness = Witness(
-        items=[sig, bytes.fromhex(preimage_hex), bytes.fromhex(claim_script_hex), claim_cb]
+        items=[
+            sig,
+            bytes.fromhex(preimage_hex),
+            bytes.fromhex(claim_script_hex),
+            claim_cb,
+        ]
     )
     return bytes.hex(tx.serialize())
 

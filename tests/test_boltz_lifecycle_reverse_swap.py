@@ -40,17 +40,19 @@ async def test_create_reverse_swap_and_claim(client: BoltzClient):
 
     new_address = create_onchain_address(client.pair)
 
-    task = asyncio.create_task(client.claim_reverse_swap(
-        boltz_id=swap.id,
-        receive_address=new_address,
-        lockup_address=swap.lockupAddress,
-        swap_tree=swap.swapTree,
-        boltz_pubkey=swap.refundPublicKey,
-        blinding_key=swap.blindingKey,
-        privkey_wif=claim_privkey_wif,
-        preimage_hex=preimage_hex,
-        zeroconf=True,
-    ))
+    task = asyncio.create_task(
+        client.claim_reverse_swap(
+            boltz_id=swap.id,
+            receive_address=new_address,
+            lockup_address=swap.lockupAddress,
+            swap_tree=swap.swapTree,
+            boltz_pubkey=swap.refundPublicKey,
+            blinding_key=swap.blindingKey,
+            privkey_wif=claim_privkey_wif,
+            preimage_hex=preimage_hex,
+            zeroconf=True,
+        )
+    )
 
     mine_blocks()
 

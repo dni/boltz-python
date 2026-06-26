@@ -162,10 +162,14 @@ class BoltzClient:
 
     def _load_pair_data(self) -> None:
         if self._sub_pair_data is None:
-            pairs = self.request("get", f"{self._base()}/swap/submarine", headers=self._headers())
+            pairs = self.request(
+                "get", f"{self._base()}/swap/submarine", headers=self._headers()
+            )
             self._sub_pair_data = pairs.get(self._from_asset, {}).get("BTC", {})
         if self._rev_pair_data is None:
-            pairs = self.request("get", f"{self._base()}/swap/reverse", headers=self._headers())
+            pairs = self.request(
+                "get", f"{self._base()}/swap/reverse", headers=self._headers()
+            )
             self._rev_pair_data = pairs.get("BTC", {}).get(self._from_asset, {})
 
     @property
@@ -210,7 +214,9 @@ class BoltzClient:
             )
 
     def swap_status(self, boltz_id: str) -> BoltzSwapStatusResponse:
-        data = self.request("get", f"{self._base()}/swap/{boltz_id}", headers=self._headers())
+        data = self.request(
+            "get", f"{self._base()}/swap/{boltz_id}", headers=self._headers()
+        )
         status = BoltzSwapStatusResponse(
             status=data["status"],
             failureReason=data.get("failureReason"),
@@ -332,8 +338,12 @@ class BoltzClient:
 
     def get_pairs(self) -> dict:
         """Return available submarine and reverse swap pairs."""
-        submarine = self.request("get", f"{self._base()}/swap/submarine", headers=self._headers())
-        reverse = self.request("get", f"{self._base()}/swap/reverse", headers=self._headers())
+        submarine = self.request(
+            "get", f"{self._base()}/swap/submarine", headers=self._headers()
+        )
+        reverse = self.request(
+            "get", f"{self._base()}/swap/reverse", headers=self._headers()
+        )
         return {"submarine": submarine, "reverse": reverse}
 
     def create_swap(self, payment_request: str) -> tuple[str, BoltzSwapResponse]:
@@ -364,7 +374,9 @@ class BoltzClient:
         )
         return refund_privkey_wif, swap
 
-    def create_reverse_swap(self, amount: int = 0) -> tuple[str, str, BoltzReverseSwapResponse]:
+    def create_reverse_swap(
+        self, amount: int = 0
+    ) -> tuple[str, str, BoltzReverseSwapResponse]:
         """Create a reverse swap (Lightning → on-chain). Returns (privkey_wif, preimage_hex, response)."""
         self.check_limits(amount)
         claim_privkey_wif, claim_pubkey_hex = create_key_pair(self.network, self.pair)

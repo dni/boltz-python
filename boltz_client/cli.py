@@ -41,8 +41,14 @@ def create_swap(payment_request: str, pair: str = "BTC/BTC"):
 
     swap_tree_json = json.dumps(
         {
-            "claimLeaf": {"output": swap.swapTree.claimLeaf.output, "version": swap.swapTree.claimLeaf.version},
-            "refundLeaf": {"output": swap.swapTree.refundLeaf.output, "version": swap.swapTree.refundLeaf.version},
+            "claimLeaf": {
+                "output": swap.swapTree.claimLeaf.output,
+                "version": swap.swapTree.claimLeaf.version,
+            },
+            "refundLeaf": {
+                "output": swap.swapTree.refundLeaf.output,
+                "version": swap.swapTree.refundLeaf.version,
+            },
         }
     )
 
@@ -137,8 +143,14 @@ def create_reverse_swap(sats: int, pair: str = "BTC/BTC", direction: str = "send
 
     swap_tree_json = json.dumps(
         {
-            "claimLeaf": {"output": swap.swapTree.claimLeaf.output, "version": swap.swapTree.claimLeaf.version},
-            "refundLeaf": {"output": swap.swapTree.refundLeaf.output, "version": swap.swapTree.refundLeaf.version},
+            "claimLeaf": {
+                "output": swap.swapTree.claimLeaf.output,
+                "version": swap.swapTree.claimLeaf.version,
+            },
+            "refundLeaf": {
+                "output": swap.swapTree.refundLeaf.output,
+                "version": swap.swapTree.refundLeaf.version,
+            },
         }
     )
 
