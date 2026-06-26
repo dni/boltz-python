@@ -7,10 +7,10 @@ from embit.base import EmbitError
 from embit.hashes import tagged_hash
 from embit.liquid.addresses import to_unconfidential
 from embit.liquid.networks import NETWORKS as LNETWORKS
-from embit.misc import secp256k1
 from embit.networks import NETWORKS
 from embit.script import Witness
 from embit.transaction import SIGHASH, Transaction, TransactionInput, TransactionOutput
+from embit.util import secp256k1
 
 # secp256k1 curve order
 _N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
