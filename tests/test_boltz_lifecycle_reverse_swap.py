@@ -19,7 +19,7 @@ async def test_create_reverse_swap_and_claim(client: BoltzClient):
     assert isinstance(swap, BoltzReverseSwapResponse)
     assert hasattr(swap, "id")
     assert hasattr(swap, "invoice")
-    assert hasattr(swap, "redeemScript")
+    assert hasattr(swap, "swapTree")
     assert hasattr(swap, "lockupAddress")
     assert hasattr(swap, "timeoutBlockHeight")
     assert hasattr(swap, "onchainAmount")
@@ -44,7 +44,8 @@ async def test_create_reverse_swap_and_claim(client: BoltzClient):
         boltz_id=swap.id,
         receive_address=new_address,
         lockup_address=swap.lockupAddress,
-        redeem_script_hex=swap.redeemScript,
+        swap_tree=swap.swapTree,
+        boltz_pubkey=swap.refundPublicKey,
         blinding_key=swap.blindingKey,
         privkey_wif=claim_privkey_wif,
         preimage_hex=preimage_hex,
@@ -79,7 +80,8 @@ async def test_create_reverse_swap_direction(client: BoltzClient):
         boltz_id=swap.id,
         receive_address=new_address,
         lockup_address=swap.lockupAddress,
-        redeem_script_hex=swap.redeemScript,
+        swap_tree=swap.swapTree,
+        boltz_pubkey=swap.refundPublicKey,
         blinding_key=swap.blindingKey,
         privkey_wif=claim_privkey_wif,
         preimage_hex=preimage_hex,

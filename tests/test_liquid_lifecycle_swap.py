@@ -54,7 +54,8 @@ async def test_create_swap_and_refund(client_liquid: BoltzClient, liquid_pr_refu
         privkey_wif=refund_privkey_wif,
         lockup_address=swap.address,
         receive_address=onchain_address,
-        redeem_script_hex=swap.redeemScript,
+        swap_tree=swap.swapTree,
+        boltz_pubkey=swap.claimPublicKey,
         timeout_block_height=swap.timeoutBlockHeight,
         blinding_key=swap.blindingKey,
     )

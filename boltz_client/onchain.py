@@ -1,16 +1,20 @@
-""" boltz_client onchain module """
+"""boltz_client onchain module - Boltz v2 taproot"""
 import os
 from hashlib import sha256
 from typing import Optional
 
 from embit import ec, script
 from embit.base import EmbitError
+from embit.hashes import tagged_hash
 from embit.liquid.addresses import to_unconfidential
 from embit.liquid.networks import NETWORKS as LNETWORKS
+from embit.misc import secp256k1
 from embit.networks import NETWORKS
+from embit.script import Witness
 from embit.transaction import SIGHASH, Transaction, TransactionInput, TransactionOutput
 
-from .onchain_wally import create_liquid_tx
+# secp256k1 curve order
+_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
 
 def validate_address(address: str, network: str, pair: str) -> str:
@@ -39,146 +43,220 @@ def create_preimage() -> tuple[str, str]:
     return preimage.hex(), preimage_hash
 
 
-def create_key_pair(network, pair) -> tuple[str, str]:
+def create_key_pair(network: str, pair: str) -> tuple[str, str]:
     if pair == "L-BTC/BTC":
         net = LNETWORKS[network]
     else:
         net = NETWORKS[network]
-
     privkey = ec.PrivateKey(os.urandom(32), True, net)
     pubkey_hex = bytes.hex(privkey.sec())
     privkey_wif = privkey.wif(net)
     return privkey_wif, pubkey_hex
 
 
-def create_refund_tx(
-    privkey_wif: str,
-    receive_address: str,
-    redeem_script_hex: str,
-    timeout_block_height: int,
-    lockup_address: str,
-    lockup_rawtx: str,
-    pair: str,
-    fees: int,
-    blinding_key: Optional[str] = None,
-) -> str:
-    # redeemscript to script_sig
-    rs = bytes([34]) + bytes([0]) + bytes([32])
-    rs += sha256(bytes.fromhex(redeem_script_hex)).digest()
-    script_sig = rs
-    return create_onchain_tx(
-        lockup_address=lockup_address,
-        sequence=0xFFFFFFFE,
-        redeem_script_hex=redeem_script_hex,
-        privkey_wif=privkey_wif,
-        lockup_rawtx=lockup_rawtx,
-        receive_address=receive_address,
-        timeout_block_height=timeout_block_height,
-        script_sig=script_sig,
-        pair=pair,
-        fees=fees,
-        blinding_key=blinding_key,
-    )
+def _tap_leaf_hash(script_hex: str, version: int = 0xC0) -> bytes:
+    """BIP341 TapLeaf hash: tagged_hash('TapLeaf', version || compact_size || script)."""
+    leaf_script = script.Script(data=bytes.fromhex(script_hex))
+    return tagged_hash("TapLeaf", bytes([version]) + leaf_script.serialize())
+
+
+def _tap_branch_hash(left: bytes, right: bytes) -> bytes:
+    """BIP341 TapBranch hash. Sorts inputs so left <= right."""
+    if right < left:
+        left, right = right, left
+    return tagged_hash("TapBranch", left + right)
+
+
+def _musig2_key_agg(pk1_hex: str, pk2_hex: str) -> bytes:
+    """BIP327 key aggregation for 2 pubkeys (33-byte compressed hex).
+    pk1 gets the hash coefficient; pk2 (the 'second key') gets coefficient 1.
+    Returns 32-byte x-only aggregate key.
+
+    For Boltz taproot:
+    - Submarine swap: pk1=boltz_claim_key, pk2=our_refund_key
+    - Reverse swap:   pk1=boltz_refund_key, pk2=our_claim_key
+    """
+    pk1 = bytes.fromhex(pk1_hex)
+    pk2 = bytes.fromhex(pk2_hex)
+    xonly1 = pk1[1:]  # 32-byte x-coordinate
+    xonly2 = pk2[1:]
+
+    L = tagged_hash("KeyAgg list", xonly1 + xonly2)
+    a1 = int.from_bytes(tagged_hash("KeyAgg coefficient", L + xonly1), "big") % _N
+
+    point1 = secp256k1.ec_pubkey_parse(b"\x02" + xonly1)
+    point2 = secp256k1.ec_pubkey_parse(b"\x02" + xonly2)
+
+    secp256k1.ec_pubkey_tweak_mul(point1, a1.to_bytes(32, "big"))
+    aggregate = secp256k1.ec_pubkey_combine(point1, point2)
+    return secp256k1.ec_pubkey_serialize(aggregate, secp256k1.EC_COMPRESSED)[1:]
+
+
+def _build_taproot(
+    internal_xonly: bytes,
+    claim_script_hex: str,
+    refund_script_hex: str,
+    leaf_version: int = 0xC0,
+) -> tuple[bytes, bytes, bytes, bytes]:
+    """Build a 2-leaf taproot tree (claim + refund leaves at depth 1).
+
+    Returns (output_xonly, p2tr_scriptpubkey, claim_control_block, refund_control_block).
+    """
+    claim_h = _tap_leaf_hash(claim_script_hex, leaf_version)
+    refund_h = _tap_leaf_hash(refund_script_hex, leaf_version)
+    tree_hash = _tap_branch_hash(claim_h, refund_h)
+
+    tweak = tagged_hash("TapTweak", internal_xonly + tree_hash)
+    point = secp256k1.ec_pubkey_parse(b"\x02" + internal_xonly)
+    out_point = secp256k1.ec_pubkey_add(point, tweak)
+    out_compressed = secp256k1.ec_pubkey_serialize(out_point, secp256k1.EC_COMPRESSED)
+
+    out_xonly = out_compressed[1:]
+    parity = 0x01 if out_compressed[0] == 0x03 else 0x00
+
+    p2tr_spk = bytes([0x51, 0x20]) + out_xonly
+    cb_prefix = bytes([leaf_version | parity]) + internal_xonly
+    claim_cb = cb_prefix + refund_h
+    refund_cb = cb_prefix + claim_h
+
+    return out_xonly, p2tr_spk, claim_cb, refund_cb
+
+
+def _find_utxo(lockup_rawtx: str, lockup_address: str) -> tuple[bytes, int, int]:
+    """Parse lockup tx and find the output paying to lockup_address.
+    Returns (txid_bytes, vout_index, vout_amount_sats).
+    """
+    try:
+        lockup_tx = Transaction.from_string(lockup_rawtx)
+    except EmbitError as exc:
+        raise ValueError("Invalid lockup transaction hex") from exc
+
+    lockup_spk = script.address_to_scriptpubkey(lockup_address)
+    for i, vout in enumerate(lockup_tx.vout):
+        if vout.script_pubkey == lockup_spk:
+            return lockup_tx.txid(), i, vout.value
+
+    raise ValueError("No matching vout found in lockup transaction for lockup_address")
 
 
 def create_claim_tx(
     lockup_address: str,
-    preimage_hex: str,
-    privkey_wif: str,
-    receive_address: str,
-    redeem_script_hex: str,
     lockup_rawtx: str,
+    receive_address: str,
+    privkey_wif: str,
+    preimage_hex: str,
+    claim_script_hex: str,
+    refund_script_hex: str,
+    boltz_pubkey: str,
     fees: int,
     pair: str,
+    leaf_version: int = 0xC0,
     blinding_key: Optional[str] = None,
 ) -> str:
-    return create_onchain_tx(
-        lockup_address=lockup_address,
-        preimage_hex=preimage_hex,
-        lockup_rawtx=lockup_rawtx,
-        receive_address=receive_address,
-        privkey_wif=privkey_wif,
-        redeem_script_hex=redeem_script_hex,
-        fees=fees,
-        pair=pair,
-        blinding_key=blinding_key,
+    """Build and sign a taproot script-path claim transaction (reverse swap)."""
+    if pair == "L-BTC/BTC":
+        raise NotImplementedError("Liquid taproot claim not yet implemented for v2")
+
+    privkey = ec.PrivateKey.from_wif(privkey_wif)
+    our_pubkey = privkey.sec().hex()
+
+    # Reverse swap key order: [boltz_refund_key, our_claim_key]
+    internal_xonly = _musig2_key_agg(boltz_pubkey, our_pubkey)
+    out_xonly, p2tr_spk, claim_cb, _ = _build_taproot(
+        internal_xonly, claim_script_hex, refund_script_hex, leaf_version
     )
 
-
-def create_onchain_tx(
-    lockup_address: str,
-    lockup_rawtx: str,
-    receive_address: str,
-    privkey_wif: str,
-    redeem_script_hex: str,
-    fees: int,
-    pair: str,
-    sequence: int = 0xFFFFFFFF,
-    timeout_block_height: int = 0,
-    preimage_hex: str = "",
-    script_sig: Optional[bytes] = None,
-    blinding_key: Optional[str] = None,
-) -> str:
-
-    if pair == "L-BTC/BTC":
-        if not blinding_key:
-            raise ValueError("Blinding key is required for L-BTC/BTC pair")
-
-        return create_liquid_tx(
-            lockup_rawtx=lockup_rawtx,
-            lockup_address=lockup_address,
-            receive_address=receive_address,
-            privkey_wif=privkey_wif,
-            redeem_script_hex=redeem_script_hex,
-            fees=fees,
-            sequence=sequence,
-            timeout_block_height=timeout_block_height,
-            preimage_hex=preimage_hex,
-            blinding_key=blinding_key,
+    expected_spk = script.address_to_scriptpubkey(lockup_address)
+    if script.Script(data=p2tr_spk) != expected_spk:
+        raise ValueError(
+            "Computed taproot address does not match lockup_address; "
+            "check key ordering or leaf scripts"
         )
 
-    try:
-        lockup_transaction = Transaction.from_string(lockup_rawtx)
-    except EmbitError as exc:
-        raise ValueError("Invalid lockup transaction hex") from exc
-
-    txid = lockup_transaction.txid()
-    vout_amount: Optional[int] = None
-    vout_index: int = 0
-    for vout in lockup_transaction.vout:
-        if vout.script_pubkey == script.address_to_scriptpubkey(lockup_address):
-            vout_amount = vout.value
-            break
-        vout_index += 1
-
-    if vout_amount is None:
-        raise ValueError("No matching vout found in lockup transaction")
+    txid, vout_idx, vout_amount = _find_utxo(lockup_rawtx, lockup_address)
 
     vout = TransactionOutput(
         vout_amount - fees,
         script.address_to_scriptpubkey(receive_address),
     )
-    vout = [vout]
-    vin = TransactionInput(
-        txid,
-        vout_index,
-        sequence=sequence,
-        script_sig=script.Script(data=script_sig) if script_sig else None,
+    vin = TransactionInput(txid, vout_idx, sequence=0xFFFFFFFF)
+    tx = Transaction(vin=[vin], vout=[vout])
+
+    claim_script = script.Script(data=bytes.fromhex(claim_script_hex))
+    sighash = tx.sighash_taproot(
+        0,
+        script_pubkeys=[script.Script(data=p2tr_spk)],
+        values=[vout_amount],
+        sighash=SIGHASH.DEFAULT,
+        ext_flag=1,
+        script=claim_script,
+        leaf_version=leaf_version,
     )
-    tx = Transaction(vin=[vin], vout=vout)
+    sig = privkey.schnorr_sign(sighash)._sig
 
-    if timeout_block_height > 0:
-        tx.locktime = timeout_block_height
+    tx.vin[0].witness = Witness(
+        items=[sig, bytes.fromhex(preimage_hex), bytes.fromhex(claim_script_hex), claim_cb]
+    )
+    return bytes.hex(tx.serialize())
 
-    redeem_script = script.Script(data=bytes.fromhex(redeem_script_hex))
-    h = tx.sighash_segwit(0, redeem_script, vout_amount)
-    sig = ec.PrivateKey.from_wif(privkey_wif).sign(h).serialize() + bytes([SIGHASH.ALL])
-    witness_script = script.Witness(
-        items=[sig, bytes.fromhex(preimage_hex), bytes.fromhex(redeem_script_hex)]
+
+def create_refund_tx(
+    lockup_address: str,
+    lockup_rawtx: str,
+    receive_address: str,
+    privkey_wif: str,
+    claim_script_hex: str,
+    refund_script_hex: str,
+    boltz_pubkey: str,
+    timeout_block_height: int,
+    fees: int,
+    pair: str,
+    leaf_version: int = 0xC0,
+    blinding_key: Optional[str] = None,
+) -> str:
+    """Build and sign a taproot script-path refund transaction (submarine swap)."""
+    if pair == "L-BTC/BTC":
+        raise NotImplementedError("Liquid taproot refund not yet implemented for v2")
+
+    privkey = ec.PrivateKey.from_wif(privkey_wif)
+    our_pubkey = privkey.sec().hex()
+
+    # Submarine swap key order: [boltz_claim_key, our_refund_key]
+    internal_xonly = _musig2_key_agg(boltz_pubkey, our_pubkey)
+    out_xonly, p2tr_spk, _, refund_cb = _build_taproot(
+        internal_xonly, claim_script_hex, refund_script_hex, leaf_version
     )
 
-    tx.vin[0].witness = witness_script
-    if script_sig:
-        tx.vin[0].script_sig = script.Script(data=script_sig)
+    expected_spk = script.address_to_scriptpubkey(lockup_address)
+    if script.Script(data=p2tr_spk) != expected_spk:
+        raise ValueError(
+            "Computed taproot address does not match lockup_address; "
+            "check key ordering or leaf scripts"
+        )
 
+    txid, vout_idx, vout_amount = _find_utxo(lockup_rawtx, lockup_address)
+
+    vout = TransactionOutput(
+        vout_amount - fees,
+        script.address_to_scriptpubkey(receive_address),
+    )
+    vin = TransactionInput(txid, vout_idx, sequence=0xFFFFFFFE)
+    tx = Transaction(vin=[vin], vout=[vout])
+    tx.locktime = timeout_block_height
+
+    refund_script = script.Script(data=bytes.fromhex(refund_script_hex))
+    sighash = tx.sighash_taproot(
+        0,
+        script_pubkeys=[script.Script(data=p2tr_spk)],
+        values=[vout_amount],
+        sighash=SIGHASH.DEFAULT,
+        ext_flag=1,
+        script=refund_script,
+        leaf_version=leaf_version,
+    )
+    sig = privkey.schnorr_sign(sighash)._sig
+
+    tx.vin[0].witness = Witness(
+        items=[sig, bytes.fromhex(refund_script_hex), refund_cb]
+    )
     return bytes.hex(tx.serialize())

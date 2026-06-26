@@ -15,15 +15,9 @@ async def test_api_exception():
         network="regtest",
         api_url="http://localhost:9999",
     )
+    c = BoltzClient(config)
     with pytest.raises(BoltzApiException):
-        BoltzClient(config)
-
-
-@pytest.mark.asyncio
-async def test_api_log_config(client):
-    data = client.check_version()
-    assert "version" in data
-    assert data.get("version")
+        c.check_limits(50000)
 
 
 min_limit = 10000
