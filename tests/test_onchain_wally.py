@@ -1,4 +1,5 @@
 import pytest
+import wallycore as wally
 
 from boltz_client.onchain_wally import (
     NETWORKS,
@@ -7,8 +8,6 @@ from boltz_client.onchain_wally import (
     get_address_network,
     is_possible_confidential_address,
 )
-
-wally = pytest.importorskip("wallycore", reason="wallycore is required")
 
 
 @pytest.mark.parametrize(

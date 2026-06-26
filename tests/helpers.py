@@ -49,6 +49,8 @@ def mine_blocks(pair: str = "BTC/BTC", blocks: int = 1) -> str:
 
 
 def create_onchain_address(pair: str = "BTC/BTC", address_type: str = "bech32") -> str:
+    if pair == "L-BTC/BTC" and address_type == "bech32":
+        address_type = "legacy"
     return run_core_cli_cmd(pair, f"getnewaddress {address_type}")
 
 

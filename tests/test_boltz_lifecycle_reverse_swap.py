@@ -56,14 +56,18 @@ async def test_create_reverse_swap_and_claim(client: BoltzClient):
 
     mine_blocks()
 
-    txid = await task
+    try:
+        txid = await asyncio.wait_for(task, timeout=60)
+    except TimeoutError:
+        p.terminate()
+        raise
 
     assert txid, "txid is not None"
 
     swap_status_after_confirmed = client.swap_status(swap.id)
     assert swap_status_after_confirmed.status == "invoice.settled"
     # wait for invoice going through
-    p.wait()
+    p.wait(timeout=30)
 
 
 @pytest.mark.asyncio
@@ -78,20 +82,27 @@ async def test_create_reverse_swap_direction(client: BoltzClient):
     if p.poll():
         raise AssertionError
     new_address = create_onchain_address(client.pair)
-    txid = await client.claim_reverse_swap(
-        boltz_id=swap.id,
-        receive_address=new_address,
-        lockup_address=swap.lockupAddress,
-        swap_tree=swap.swapTree,
-        boltz_pubkey=swap.refundPublicKey,
-        blinding_key=swap.blindingKey,
-        privkey_wif=claim_privkey_wif,
-        preimage_hex=preimage_hex,
-        zeroconf=True,
-    )
+    try:
+        txid = await asyncio.wait_for(
+            client.claim_reverse_swap(
+                boltz_id=swap.id,
+                receive_address=new_address,
+                lockup_address=swap.lockupAddress,
+                swap_tree=swap.swapTree,
+                boltz_pubkey=swap.refundPublicKey,
+                blinding_key=swap.blindingKey,
+                privkey_wif=claim_privkey_wif,
+                preimage_hex=preimage_hex,
+                zeroconf=True,
+            ),
+            timeout=60,
+        )
+    except TimeoutError:
+        p.terminate()
+        raise
     mine_blocks()
 
     assert txid, "txid is not None"
 
     # wait for invoice going through
-    p.wait()
+    p.wait(timeout=30)

@@ -11,6 +11,8 @@ import secrets
 from dataclasses import dataclass
 from typing import Any
 
+import wallycore as wally
+
 
 @dataclass
 class Network:
@@ -157,13 +159,6 @@ def create_liquid_tx(
     preimage_hex: str = "",
     blinding_key: str | None = None,
 ) -> str:
-    try:
-        import wallycore as wally
-    except ImportError as exc:
-        raise ImportError(
-            "`wallycore` is not installed, but required for liquid support."
-        ) from exc
-
     network = get_address_network(wally, receive_address)
 
     redeem_script = bytes.fromhex(redeem_script_hex)

@@ -3,15 +3,18 @@
 import os
 from hashlib import sha256
 
+import wallycore as wally
 from embit import ec, script
 from embit.base import EmbitError
-from embit.hashes import tagged_hash
-from embit.liquid.addresses import to_unconfidential
+from embit.hashes import tagged_hash, tagged_hash_init
 from embit.liquid.networks import NETWORKS as LNETWORKS
 from embit.networks import NETWORKS
 from embit.script import Witness
 from embit.transaction import SIGHASH, Transaction, TransactionInput, TransactionOutput
 from embit.util import secp256k1
+
+from .onchain_wally import NETWORKS as WALLY_NETWORKS
+from .onchain_wally import decode_address
 
 # secp256k1 curve order
 _N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -19,12 +22,22 @@ _N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
 def validate_address(address: str, network: str, pair: str) -> str:
     if pair == "L-BTC/BTC":
-        net = LNETWORKS[network]
-        _address_unconfidential = to_unconfidential(address)
-        if not _address_unconfidential:
-            raise ValueError("can not unconfidentialize address")
-        address = _address_unconfidential
-        _address = _address_unconfidential
+        liquid_networks = {
+            "liquidv1": "mainnet",
+            "liquidtestnet": "testnet",
+            "elementsregtest": "regtest",
+        }
+        wally_network_name = liquid_networks[network]
+        wally_network = next(
+            network
+            for network in WALLY_NETWORKS
+            if network.name == wally_network_name
+        )
+        try:
+            decode_address(wally, wally_network, address)
+        except Exception as exc:
+            raise ValueError(f"Invalid address: {exc}") from exc
+        return address
     else:
         net = NETWORKS[network]
         _address = address
@@ -125,6 +138,37 @@ def _build_taproot(
     return out_xonly, p2tr_spk, claim_cb, refund_cb
 
 
+def _sighash_taproot_script_path(
+    tx: Transaction,
+    input_index: int,
+    script_pubkeys: list[script.Script],
+    values: list[int],
+    script_hex: str,
+    leaf_version: int = 0xC0,
+    sighash: int = SIGHASH.DEFAULT,
+) -> bytes:
+    """BIP341 script-path taproot sighash for the default Boltz signing path."""
+    sh, anyonecanpay = SIGHASH.check(sighash)
+    if anyonecanpay or sh in [SIGHASH.SINGLE, SIGHASH.NONE]:
+        raise ValueError("Unsupported taproot sighash type")
+
+    h = tagged_hash_init("TapSighash", b"\x00")
+    h.update(bytes([sighash]))
+    h.update(tx.version.to_bytes(4, "little"))
+    h.update(tx.locktime.to_bytes(4, "little"))
+    h.update(tx.hash_prevouts())
+    h.update(tx.hash_amounts(values))
+    h.update(tx.hash_script_pubkeys(script_pubkeys))
+    h.update(tx.hash_sequence())
+    h.update(tx.hash_outputs())
+    h.update(b"\x02")  # spend_type: ext_flag=1, annex_present=0
+    h.update(input_index.to_bytes(4, "little"))
+    h.update(_tap_leaf_hash(script_hex, leaf_version))
+    h.update(b"\x00")  # key_version
+    h.update((0xFFFFFFFF).to_bytes(4, "little"))  # code_separator_pos
+    return h.digest()
+
+
 def _find_utxo(lockup_rawtx: str, lockup_address: str) -> tuple[bytes, int, int]:
     """Parse lockup tx and find the output paying to lockup_address.
     Returns (txid_bytes, vout_index, vout_amount_sats).
@@ -185,14 +229,12 @@ def create_claim_tx(
     vin = TransactionInput(txid, vout_idx, sequence=0xFFFFFFFF)
     tx = Transaction(vin=[vin], vout=[vout])
 
-    claim_script = script.Script(data=bytes.fromhex(claim_script_hex))
-    sighash = tx.sighash_taproot(
-        0,
+    sighash = _sighash_taproot_script_path(
+        tx,
+        input_index=0,
         script_pubkeys=[script.Script(data=p2tr_spk)],
         values=[vout_amount],
-        sighash=SIGHASH.DEFAULT,
-        ext_flag=1,
-        script=claim_script,
+        script_hex=claim_script_hex,
         leaf_version=leaf_version,
     )
     sig = privkey.schnorr_sign(sighash)._sig
@@ -252,14 +294,12 @@ def create_refund_tx(
     tx = Transaction(vin=[vin], vout=[vout])
     tx.locktime = timeout_block_height
 
-    refund_script = script.Script(data=bytes.fromhex(refund_script_hex))
-    sighash = tx.sighash_taproot(
-        0,
+    sighash = _sighash_taproot_script_path(
+        tx,
+        input_index=0,
         script_pubkeys=[script.Script(data=p2tr_spk)],
         values=[vout_amount],
-        sighash=SIGHASH.DEFAULT,
-        ext_flag=1,
-        script=refund_script,
+        script_hex=refund_script_hex,
         leaf_version=leaf_version,
     )
     sig = privkey.schnorr_sign(sighash)._sig
