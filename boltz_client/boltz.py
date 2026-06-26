@@ -330,6 +330,12 @@ class BoltzClient:
         )
         return self.send_onchain_tx(transaction)
 
+    def get_pairs(self) -> dict:
+        """Return available submarine and reverse swap pairs."""
+        submarine = self.request("get", f"{self._base()}/swap/submarine", headers=self._headers())
+        reverse = self.request("get", f"{self._base()}/swap/reverse", headers=self._headers())
+        return {"submarine": submarine, "reverse": reverse}
+
     def create_swap(self, payment_request: str) -> tuple[str, BoltzSwapResponse]:
         """Create a submarine swap (on-chain → Lightning). Returns (privkey_wif, response)."""
         refund_privkey_wif, refund_pubkey_hex = create_key_pair(self.network, self.pair)
