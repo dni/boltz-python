@@ -1,7 +1,6 @@
 """boltz_client onchain module - Boltz v2 taproot"""
 import os
 from hashlib import sha256
-from typing import Optional
 
 from embit import ec, script
 from embit.base import EmbitError
@@ -55,7 +54,7 @@ def create_key_pair(network: str, pair: str) -> tuple[str, str]:
 
 
 def _tap_leaf_hash(script_hex: str, version: int = 0xC0) -> bytes:
-    """BIP341 TapLeaf hash: tagged_hash('TapLeaf', version || compact_size || script)."""
+    """BIP341 TapLeaf hash."""
     leaf_script = script.Script(data=bytes.fromhex(script_hex))
     return tagged_hash("TapLeaf", bytes([version]) + leaf_script.serialize())
 
@@ -80,8 +79,11 @@ def _musig2_key_agg(pk1_hex: str, pk2_hex: str) -> bytes:
     pk2 = bytes.fromhex(pk2_hex)
 
     # Use full 33-byte compressed keys for hashing (matches @scure/btc-signer)
-    L = tagged_hash("KeyAgg list", pk1 + pk2)
-    a1 = int.from_bytes(tagged_hash("KeyAgg coefficient", L + pk1), "big") % _N
+    key_agg_hash = tagged_hash("KeyAgg list", pk1 + pk2)
+    a1 = (
+        int.from_bytes(tagged_hash("KeyAgg coefficient", key_agg_hash + pk1), "big")
+        % _N
+    )
 
     # Parse with actual y-parity (not forced even)
     point1 = secp256k1.ec_pubkey_parse(pk1)
@@ -100,7 +102,7 @@ def _build_taproot(
 ) -> tuple[bytes, bytes, bytes, bytes]:
     """Build a 2-leaf taproot tree (claim + refund leaves at depth 1).
 
-    Returns (output_xonly, p2tr_scriptpubkey, claim_control_block, refund_control_block).
+    Returns output key, script pubkey, and both control blocks.
     """
     claim_h = _tap_leaf_hash(claim_script_hex, leaf_version)
     refund_h = _tap_leaf_hash(refund_script_hex, leaf_version)
@@ -151,7 +153,7 @@ def create_claim_tx(
     fees: int,
     pair: str,
     leaf_version: int = 0xC0,
-    blinding_key: Optional[str] = None,
+    blinding_key: str | None = None,
 ) -> str:
     """Build and sign a taproot script-path claim transaction (reverse swap)."""
     if pair == "L-BTC/BTC":
@@ -162,7 +164,7 @@ def create_claim_tx(
 
     # Reverse swap key order: [boltz_refund_key, our_claim_key]
     internal_xonly = _musig2_key_agg(boltz_pubkey, our_pubkey)
-    out_xonly, p2tr_spk, claim_cb, _ = _build_taproot(
+    _out_xonly, p2tr_spk, claim_cb, _ = _build_taproot(
         internal_xonly, claim_script_hex, refund_script_hex, leaf_version
     )
 
@@ -217,7 +219,7 @@ def create_refund_tx(
     fees: int,
     pair: str,
     leaf_version: int = 0xC0,
-    blinding_key: Optional[str] = None,
+    blinding_key: str | None = None,
 ) -> str:
     """Build and sign a taproot script-path refund transaction (submarine swap)."""
     if pair == "L-BTC/BTC":
@@ -228,7 +230,7 @@ def create_refund_tx(
 
     # Submarine swap key order: [boltz_claim_key, our_refund_key]
     internal_xonly = _musig2_key_agg(boltz_pubkey, our_pubkey)
-    out_xonly, p2tr_spk, _, refund_cb = _build_taproot(
+    _out_xonly, p2tr_spk, _, refund_cb = _build_taproot(
         internal_xonly, claim_script_hex, refund_script_hex, leaf_version
     )
 

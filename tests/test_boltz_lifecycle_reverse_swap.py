@@ -36,7 +36,7 @@ async def test_create_reverse_swap_and_claim(client: BoltzClient):
 
     # check if pay_invoice is done / fails first
     if p.poll():
-        assert False
+        raise AssertionError
 
     new_address = create_onchain_address(client.pair)
 
@@ -76,7 +76,7 @@ async def test_create_reverse_swap_direction(client: BoltzClient):
 
     # check if pay_invoice is done / fails first
     if p.poll():
-        assert False
+        raise AssertionError
     new_address = create_onchain_address(client.pair)
     txid = await client.claim_reverse_swap(
         boltz_id=swap.id,

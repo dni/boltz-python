@@ -4,7 +4,6 @@ import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
 from math import ceil, floor
-from typing import Optional
 
 import httpx
 
@@ -76,9 +75,9 @@ class SwapTree:
 @dataclass
 class BoltzSwapStatusResponse:
     status: str
-    failureReason: Optional[str] = None
-    zeroConfRejected: Optional[bool] = None
-    transaction: Optional[dict] = None
+    failureReason: str | None = None
+    zeroConfRejected: bool | None = None
+    transaction: dict | None = None
 
 
 @dataclass
@@ -93,8 +92,8 @@ class BoltzSwapResponse:
     acceptZeroConf: bool
     expectedAmount: int
     timeoutBlockHeight: int
-    blindingKey: Optional[str] = None
-    referralId: Optional[str] = None
+    blindingKey: str | None = None
+    referralId: str | None = None
 
 
 @dataclass
@@ -108,8 +107,8 @@ class BoltzReverseSwapResponse:
     lockupAddress: str
     timeoutBlockHeight: int
     onchainAmount: int
-    blindingKey: Optional[str] = None
-    referralId: Optional[str] = None
+    blindingKey: str | None = None
+    referralId: str | None = None
 
 
 @dataclass
@@ -137,8 +136,8 @@ class BoltzClient:
             self.network = self._cfg.network
             self._from_asset = "BTC"
 
-        self._sub_pair_data: Optional[dict] = None
-        self._rev_pair_data: Optional[dict] = None
+        self._sub_pair_data: dict | None = None
+        self._rev_pair_data: dict | None = None
 
     def _base(self) -> str:
         return f"{self._cfg.api_url}/v2"
@@ -154,7 +153,10 @@ class BoltzClient:
                 raise BoltzNotFoundException(
                     exc.response.json().get("error", "not found")
                 ) from exc
-            msg = f"{exc.response.status_code} while requesting {exc.request.url!r}. message: {exc.response.json().get('error', '')}"
+            msg = (
+                f"{exc.response.status_code} while requesting {exc.request.url!r}. "
+                f"message: {exc.response.json().get('error', '')}"
+            )
             raise BoltzApiException(f"boltz api status error: {msg}") from exc
 
     def _headers(self) -> dict:
@@ -243,21 +245,27 @@ class BoltzClient:
             raise BoltzAddressValidationException(exc) from exc
 
     async def wait_for_tx_on_status(self, boltz_id: str, zeroconf: bool = True) -> str:
-        """Poll swap status until a lockup transaction appears (for reverse swap claim)."""
+        """Poll for reverse swap lockup transaction."""
         while True:
             try:
                 status = self.swap_status(boltz_id)
-                assert status.transaction
+                if not status.transaction:
+                    raise BoltzNotFoundException("Lockup transaction not found")
                 tx_hex = status.transaction.get("hex")
-                assert tx_hex
-                if not zeroconf:
-                    assert status.status == "transaction.confirmed"
+                if not tx_hex:
+                    raise BoltzNotFoundException("Lockup transaction hex not found")
+                if not zeroconf and status.status != "transaction.confirmed":
+                    raise BoltzNotFoundException("Lockup transaction not confirmed")
                 return tx_hex
-            except (BoltzApiException, BoltzSwapStatusException, AssertionError):
+            except (
+                BoltzApiException,
+                BoltzNotFoundException,
+                BoltzSwapStatusException,
+            ):
                 await asyncio.sleep(3)
 
     async def wait_for_tx(self, boltz_id: str) -> str:
-        """Poll for submarine swap lockup transaction (for refund after failed submarine swap)."""
+        """Poll for submarine swap lockup transaction."""
         while True:
             try:
                 data = self.request(
@@ -266,9 +274,10 @@ class BoltzClient:
                     headers=self._headers(),
                 )
                 tx_hex = data.get("hex")
-                assert tx_hex
+                if not tx_hex:
+                    raise BoltzNotFoundException("Lockup transaction hex not found")
                 return tx_hex
-            except (BoltzApiException, BoltzNotFoundException, AssertionError):
+            except (BoltzApiException, BoltzNotFoundException):
                 await asyncio.sleep(3)
 
     async def claim_reverse_swap(
@@ -281,9 +290,9 @@ class BoltzClient:
         swap_tree: SwapTree,
         boltz_pubkey: str,
         zeroconf: bool = True,
-        blinding_key: Optional[str] = None,
+        blinding_key: str | None = None,
     ) -> str:
-        """Claim a reverse swap output (Lightning → on-chain) via taproot script path."""
+        """Claim a reverse swap output via taproot script path."""
         self.validate_address(receive_address)
         self.validate_address(lockup_address)
         lockup_rawtx = await self.wait_for_tx_on_status(boltz_id, zeroconf)
@@ -313,7 +322,7 @@ class BoltzClient:
         swap_tree: SwapTree,
         boltz_pubkey: str,
         timeout_block_height: int,
-        blinding_key: Optional[str] = None,
+        blinding_key: str | None = None,
     ) -> str:
         """Refund a failed submarine swap via taproot script path."""
         self.validate_address(receive_address)
@@ -347,7 +356,7 @@ class BoltzClient:
         return {"submarine": submarine, "reverse": reverse}
 
     def create_swap(self, payment_request: str) -> tuple[str, BoltzSwapResponse]:
-        """Create a submarine swap (on-chain → Lightning). Returns (privkey_wif, response)."""
+        """Create a submarine swap. Returns (privkey_wif, response)."""
         refund_privkey_wif, refund_pubkey_hex = create_key_pair(self.network, self.pair)
         data = self.request(
             "post",
@@ -377,7 +386,7 @@ class BoltzClient:
     def create_reverse_swap(
         self, amount: int = 0
     ) -> tuple[str, str, BoltzReverseSwapResponse]:
-        """Create a reverse swap (Lightning → on-chain). Returns (privkey_wif, preimage_hex, response)."""
+        """Create a reverse swap. Returns (privkey_wif, preimage_hex, response)."""
         self.check_limits(amount)
         claim_privkey_wif, claim_pubkey_hex = create_key_pair(self.network, self.pair)
         preimage_hex, preimage_hash = create_preimage()

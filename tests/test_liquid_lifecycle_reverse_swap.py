@@ -2,6 +2,7 @@
 import pytest
 
 from boltz_client.boltz import BoltzClient
+
 from .helpers import create_onchain_address, mine_blocks, pay_invoice
 
 
@@ -16,7 +17,7 @@ async def test_liquid_create_reverse_swap_and_claim(client_liquid: BoltzClient):
 
     # check if pay_invoice is done / fails first
     if p.poll():
-        assert False
+        raise AssertionError
 
     txid = await client_liquid.claim_reverse_swap(
         boltz_id=swap.id,

@@ -30,7 +30,6 @@ dev = [
   "pytest>=7.1.2,<8",
   "black>=22.6.0,<23",
   "mypy>=0.971,<2",
-  "pylint>=2.15.10,<4",
   "ruff>=0.6.0,<1",
 ]
 
@@ -44,6 +43,25 @@ packages = ["boltz_client"]
 [tool.isort]
 profile = "black"
 
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "A", "C", "N", "UP", "RUF", "B", "S"]
+ignore = ["RUF012", "RUF043"]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.per-file-ignores]
+"boltz_client/boltz.py" = ["N815", "N818"]
+"test*.py" = ["S101", "S105", "S106", "S307"]
+"tests/*" = ["S101", "S105", "S106", "S307", "S311"]
+"tests/helpers.py" = ["S602", "S603", "S607"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
 [tool.mypy]
 ignore_missing_imports = "True"
 files = "boltz_client"
@@ -54,21 +72,4 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 testpaths = [
   "tests"
-]
-
-[tool.pylint.format]
-max-line-length = 125
-
-[tool.pylint.'MESSAGES CONTROL']
-disable = [
-  "fixme",
-  "import-outside-toplevel",
-  "invalid-name",
-  "too-many-arguments",
-  "missing-function-docstring",
-  "missing-class-docstring",
-  "too-many-instance-attributes",
-  "too-many-locals",
-  "too-many-statements",
-  "broad-exception-caught",
 ]

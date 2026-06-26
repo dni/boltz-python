@@ -9,7 +9,7 @@ from boltz_client.boltz import (
     BoltzSwapStatusResponse,
 )
 
-from .helpers import create_onchain_address, mine_blocks, pay_onchain, get_invoice
+from .helpers import create_onchain_address, get_invoice, mine_blocks, pay_onchain
 
 
 @pytest.mark.asyncio

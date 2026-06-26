@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -154,7 +154,7 @@ def create_liquid_tx(
     sequence: int = 0xFFFFFFFF,
     timeout_block_height: int = 0,
     preimage_hex: str = "",
-    blinding_key: Optional[str] = None,
+    blinding_key: str | None = None,
 ) -> str:
     try:
         import wallycore as wally
@@ -173,7 +173,8 @@ def create_liquid_tx(
         wally.WALLY_WIF_FLAG_COMPRESSED,
     )  # type: ignore
 
-    assert blinding_key, "blinding_key is required"
+    if not blinding_key:
+        raise ValueError("blinding_key is required")
     try:
         blinding_key_bytes = bytes.fromhex(blinding_key)
     except ValueError as exc:
@@ -189,15 +190,15 @@ def create_liquid_tx(
     lockup_transaction = wally.tx_from_hex(
         lockup_rawtx, wally.WALLY_TX_FLAG_USE_ELEMENTS
     )
-    vout_n: Optional[int] = None
+    vout_n: int | None = None
     for vout in range(wally.tx_get_num_outputs(lockup_transaction)):
         script_out = wally.tx_get_output_script(lockup_transaction, vout)  # type: ignore
-        if script_out:
-            if script_out == lockup_script_pubkey:
-                vout_n = vout
-                break
+        if script_out and script_out == lockup_script_pubkey:
+            vout_n = vout
+            break
 
-    assert vout_n is not None, "Lockup vout not found"
+    if vout_n is None:
+        raise ValueError("Lockup vout not found")
 
     txid = wally.tx_get_txid(lockup_transaction)  # type: ignore
     lockup_script = wally.tx_get_output_script(lockup_transaction, vout_n)  # type: ignore
@@ -216,7 +217,8 @@ def create_liquid_tx(
         lockup_asset_commitment,
     )  # type: ignore
 
-    assert unblinded_asset == network.lbtc_asset, "Wrong asset"
+    if unblinded_asset != network.lbtc_asset:
+        raise ValueError("Wrong asset")
 
     # INITIALIZE PSBT (PSET)
     num_vin = 1
@@ -287,7 +289,8 @@ def create_liquid_tx(
     wally.psbt_sign(psbt, private_key, wally.EC_FLAG_GRIND_R)
     # Fetch the signature from the PSBT input for finalization
     sig_pos = wally.psbt_find_input_signature(psbt, idx, signing_pubkey)
-    assert sig_pos != 0, "signature not found"
+    if sig_pos == 0:
+        raise ValueError("signature not found")
     sig = wally.psbt_get_input_signature(psbt, idx, sig_pos - 1)  # type: ignore
 
     # FINALIZE PSBT

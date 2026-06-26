@@ -1,10 +1,12 @@
 import asyncio
+
 import pytest
 
 from boltz_client.boltz import (
     BoltzClient,
     BoltzSwapStatusException,
 )
+
 from .helpers import create_onchain_address, mine_blocks, pay_onchain
 
 

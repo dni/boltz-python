@@ -2,10 +2,10 @@ import pytest
 
 from boltz_client.onchain_wally import (
     NETWORKS,
-    get_address_network,
     Network,
-    is_possible_confidential_address,
     decode_address,
+    get_address_network,
+    is_possible_confidential_address,
 )
 
 wally = pytest.importorskip(

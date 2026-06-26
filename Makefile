@@ -10,4 +10,3 @@ format:
 lint:
 	uv run mypy boltz_client
 	uv run ruff check .
-	uv run pylint boltz_client
