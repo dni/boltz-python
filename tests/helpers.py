@@ -1,35 +1,27 @@
-""" boltz_client test helpers """
+"""boltz_client test helpers"""
 import json
 import time
 from typing import Optional
 from subprocess import PIPE, Popen, run
 
-docker_bitcoin_rpc = "boltz"
-docker_prefix = "boltz-client"
 docker_cmd = "docker exec"
-is_compose_v2: Optional[bool] = None  # Set to True/False depending on docker compose version
 
+docker_lightning = "boltz-cln-1"
+docker_lightning_cli = "lightning-cli --network regtest --lightning-dir=/app/lightning"
 
-docker_lightning = "corelightning"
-docker_lightning_cli = "lightning-cli --network regtest"
+docker_bitcoin = "boltz-bitcoind"
+docker_bitcoin_cli = "bitcoin-cli -rpcuser=boltz -rpcpassword=boltz -regtest"
 
-docker_bitcoin = "bitcoind"
-docker_bitcoin_cli = f"bitcoin-cli -rpcuser={docker_bitcoin_rpc} -rpcpassword={docker_bitcoin_rpc} -regtest"
-
-docker_elements = "elementsd"
-docker_elements_cli = f"elements-cli -rpcuser={docker_bitcoin_rpc} -rpcpassword={docker_bitcoin_rpc}"
+docker_elements = "boltz-elementsd"
+docker_elements_cli = "elements-cli -rpcuser=boltz -rpcpassword=boltz"
 
 
 def run_cmd(cmd: str) -> str:
     return run(cmd, shell=True, capture_output=True).stdout.decode("UTF-8").strip()
 
 
-def get_docker_cmd(image: str, cmd: str) -> str:
-    global is_compose_v2
-    if is_compose_v2 is None:
-        is_compose_v2 = 'Compose' in run_cmd("docker --help")
-    suffix = f"-{image}-1" if is_compose_v2 else f"_{image}_1"
-    return f"{docker_cmd} {docker_prefix}{suffix} {cmd}"
+def get_docker_cmd(container: str, cmd: str) -> str:
+    return f"{docker_cmd} {container} {cmd}"
 
 
 def get_invoice(sats: int, prefix: str, description: str = "test") -> dict:
@@ -54,7 +46,7 @@ def run_core_cli_cmd(pair: str, cli_cmd: str) -> str:
 
 
 def mine_blocks(pair: str = "BTC/BTC", blocks: int = 1) -> str:
-    return run_core_cli_cmd(pair, f"-generate {blocks}")
+    return run_core_cli_cmd(pair, f"-rpcwallet=regtest -generate {blocks}")
 
 
 def create_onchain_address(pair: str = "BTC/BTC", address_type: str = "bech32") -> str:
@@ -63,4 +55,4 @@ def create_onchain_address(pair: str = "BTC/BTC", address_type: str = "bech32") 
 
 def pay_onchain(address: str, sats: int, pair: str = "BTC/BTC") -> str:
     btc = sats / 10**8
-    return run_core_cli_cmd(pair, f"sendtoaddress {address} {btc}")
+    return run_core_cli_cmd(pair, f"-rpcwallet=regtest sendtoaddress {address} {btc}")

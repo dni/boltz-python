@@ -1,28 +1,33 @@
-version: "3.7"
 services:
 
-  boltz:
-    image: boltz/boltz:3.3.0
-    hostname: boltz
-    restart: unless-stopped
-    depends_on:
-      - lnd
-      - elementsd
-      - bitcoind
-    ports:
-      - 9000:9000
-      - 9001:9001
-    volumes:
-      - ./data/lnd:/data/lnd/
-      - ./data/boltz/:/root/.boltz/
-      - ./data/elements/:/root/.elements/
+  postgres:
+    image: postgres:18-alpine
+    hostname: postgres
+    container_name: boltz-postgres
+    restart: always
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready --dbname boltz --username boltz']
+      interval: 5s
+      timeout: 30s
+      retries: 10
+      start_period: 5s
+    environment:
+      - POSTGRES_DB=boltz
+      - POSTGRES_USER=boltz
+      - POSTGRES_PASSWORD=boltz
+    expose:
+      - 5432
 
   bitcoind:
-    image: boltz/bitcoin-core:24.0.1
+    image: boltz/bitcoin-core:latest
     hostname: bitcoind
+    container_name: boltz-bitcoind
+    restart: always
     command:
       - -regtest
+      - -datadir=/app/bitcoin
       - -fallbackfee=0.00000253
+      - -mintxfee=0.000001
       - -zmqpubrawtx=tcp://0.0.0.0:29000
       - -zmqpubrawblock=tcp://0.0.0.0:29001
       - -txindex
@@ -35,67 +40,162 @@ services:
       - 29001
       - 18443
       - 18444
+    healthcheck:
+      test: ['CMD', 'bitcoin-cli', '-rpcuser=boltz', '-rpcpassword=boltz', '-regtest', 'getblockchaininfo']
+      interval: 1s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    volumes:
+      - bitcoin-data:/app/bitcoin
 
   elementsd:
-    image: ghcr.io/vulpemventures/elements:22.1.1
+    image: boltz/elements:latest
     hostname: elements
-    restart: unless-stopped
-    depends_on:
-      - bitcoind
+    container_name: boltz-elementsd
+    restart: always
     expose:
       - 18884
       - 31000
       - 31001
       - 31002
     volumes:
-      - ./data/elements/elements.conf:/home/elements/.elements/elements.conf
+      - elements-data:/root/.elements
+      - ./data/elements/elements.conf:/root/.elements/elements.conf
+    healthcheck:
+      test: ['CMD', 'elements-cli', '-rpcuser=boltz', '-rpcpassword=boltz', '-getinfo']
+      interval: 1s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
 
-  corelightning:
-    hostname: corelightning
+  cln-1:
+    image: boltz/c-lightning-plugins:latest
+    hostname: cln-1
+    container_name: boltz-cln-1
     restart: on-failure
     depends_on:
-      - bitcoind
-    image: boltz/c-lightning:23.08.1
+      bitcoind:
+        condition: service_healthy
     command:
+      - --lightning-dir=/app/lightning
+      - --large-channels
       - --network=regtest
       - --bind-addr=0.0.0.0:9735
-      - --dev-bitcoind-poll=1
-      - --large-channels
       - --bitcoin-rpcconnect=bitcoind
       - --bitcoin-rpcport=18443
       - --bitcoin-rpcuser=boltz
       - --bitcoin-rpcpassword=boltz
+      - --dev-bitcoind-poll=1
+      - --developer
+      - --dev-fast-gossip
+      - --dev-fast-reconnect
+      - --cltv-delta=18
+      - --cltv-final=18
     expose:
       - 9735
     volumes:
-      - ./data/corelightning:/root/.lightning/
+      - cln1-data:/app/lightning
+    healthcheck:
+      test: ['CMD', 'lightning-cli', '--network=regtest', '--lightning-dir=/app/lightning', 'getinfo']
+      interval: 1s
+      timeout: 5s
+      retries: 60
+      start_period: 15s
 
-  lnd:
-    hostname: lnd
-    depends_on:
-      - bitcoind
-    image: boltz/lnd:0.16.3-beta
+  lnd-1:
+    image: boltz/lnd:latest
+    hostname: lnd-1
+    container_name: boltz-lnd-1
     restart: on-failure
+    depends_on:
+      bitcoind:
+        condition: service_healthy
     command:
-      - --listen=lnd:9735
-      - --rpclisten=lnd:10009
-      - --restlisten=lnd:8081
+      - --lnddir=/app/lnd
+      - --listen=0.0.0.0:9735
+      - --rpclisten=0.0.0.0:10009
+      - --restlisten=0.0.0.0:8081
+      - --bitcoin.timelockdelta=24
       - --bitcoin.active
       - --bitcoin.regtest
       - --bitcoin.node=bitcoind
       - --bitcoind.rpchost=bitcoind
-      - --bitcoind.zmqpubrawtx=bitcoind:29000
-      - --bitcoind.zmqpubrawblock=bitcoind:29001
       - --bitcoind.rpcuser=boltz
       - --bitcoind.rpcpass=boltz
+      - --bitcoind.zmqpubrawtx=bitcoind:29000
+      - --bitcoind.zmqpubrawblock=bitcoind:29001
       - --noseedbackup
       - --protocol.wumbo-channels
     ports:
       - 8081:8081
       - 10009:10009
     expose:
-      - 8081
       - 9735
-      - 10009
     volumes:
-      - ./data/lnd:/root/.lnd/
+      - lnd1-data:/app/lnd
+    healthcheck:
+      test: ['CMD-SHELL', 'lncli --network=regtest --lnddir=/app/lnd getinfo']
+      interval: 1s
+      timeout: 5s
+      retries: 60
+      start_period: 15s
+
+  boltz-backend:
+    image: boltz/boltz:latest
+    hostname: boltz
+    container_name: boltz-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lnd-1:
+        condition: service_healthy
+      elementsd:
+        condition: service_healthy
+      bitcoind:
+        condition: service_healthy
+    command:
+      - node
+      - --trace-deprecation
+      - /boltz-backend/bin/boltzd
+      - --datadir
+      - /boltz-data
+      - --configpath
+      - /boltz-data/boltz.conf
+    ports:
+      - 9000:9000
+    volumes:
+      - ./data/boltz:/boltz-data
+      - lnd1-data:/data/lnd
+    healthcheck:
+      test: ['CMD-SHELL', "timeout 1 bash -c 'echo > /dev/tcp/127.0.0.1/9000'"]
+      interval: 2s
+      timeout: 1s
+      retries: 60
+      start_period: 60s
+
+  boltz-backend-nginx:
+    image: nginx:alpine
+    hostname: boltz-nginx
+    container_name: boltz-nginx
+    depends_on:
+      boltz-backend:
+        condition: service_healthy
+    restart: always
+    ports:
+      - 9001:9001
+    volumes:
+      - ./data/backend-nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:9001/version']
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  bitcoin-data:
+  elements-data:
+  cln1-data:
+  lnd1-data:
