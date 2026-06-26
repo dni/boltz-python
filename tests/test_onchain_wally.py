@@ -1,9 +1,9 @@
 import pytest
 
-wally = pytest.importorskip("wallycore", reason="wallycore not installed (pip install boltz_client[liquid])")
-
 from boltz_client.onchain_wally import NETWORKS, get_address_network, Network, is_possible_confidential_address, \
     decode_address
+
+wally = pytest.importorskip("wallycore", reason="wallycore not installed (pip install boltz_client[liquid])")
 
 
 @pytest.mark.parametrize(

@@ -11,21 +11,20 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.10"]
-        poetry-version: ["1.8.5"]
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Poetry ${{ matrix.poetry-version }}
-        uses: abatilo/actions-poetry@v2
-        with:
-          poetry-version: ${{ matrix.poetry-version }}
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "poetry"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Install packages
-        run: poetry install
+        run: uv sync --locked --dev
       - name: Check black
-        run: poetry run black boltz_client --check
+        run: uv run black boltz_client --check
       - name: Check isort
-        run: poetry run isort boltz_client --check
+        run: uv run isort boltz_client --check

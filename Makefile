@@ -1,6 +1,8 @@
+.PHONY: check
+
 check:
-	poetry run black boltz_client
-	poetry run isort boltz_client
-	poetry run mypy boltz_client
-	poetry run flake8 .
-	poetry run pylint boltz_client
+	uv run black boltz_client
+	uv run isort boltz_client
+	uv run mypy boltz_client
+	uv run ruff check .
+	uv run pylint boltz_client

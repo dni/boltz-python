@@ -1,7 +1,6 @@
 """boltz_client test helpers"""
 import json
 import time
-from typing import Optional
 from subprocess import PIPE, Popen, run
 
 docker_cmd = "docker exec"
