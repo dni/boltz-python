@@ -1,4 +1,5 @@
 """boltz_client onchain module - Boltz v2 taproot"""
+
 import os
 from hashlib import sha256
 
