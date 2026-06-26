@@ -141,6 +141,38 @@ services:
       retries: 60
       start_period: 15s
 
+  bitcoind-init:
+    image: boltz/bitcoin-core:latest
+    container_name: boltz-bitcoind-init
+    restart: no
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        bitcoin-cli -rpcuser=boltz -rpcpassword=boltz -rpcconnect=bitcoind -regtest
+        createwallet regtest 2>/dev/null ||
+        bitcoin-cli -rpcuser=boltz -rpcpassword=boltz -rpcconnect=bitcoind -regtest
+        loadwallet regtest
+
+  elementsd-init:
+    image: boltz/elements:latest
+    container_name: boltz-elementsd-init
+    restart: no
+    depends_on:
+      elementsd:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        elements-cli -rpcuser=boltz -rpcpassword=boltz -rpcconnect=elementsd -rpcport=18884
+        createwallet regtest 2>/dev/null ||
+        elements-cli -rpcuser=boltz -rpcpassword=boltz -rpcconnect=elementsd -rpcport=18884
+        loadwallet regtest
+
   boltz-backend:
     image: boltz/boltz:latest
     hostname: boltz
@@ -151,10 +183,10 @@ services:
         condition: service_healthy
       lnd-1:
         condition: service_healthy
-      elementsd:
-        condition: service_healthy
-      bitcoind:
-        condition: service_healthy
+      bitcoind-init:
+        condition: service_completed_successfully
+      elementsd-init:
+        condition: service_completed_successfully
     command:
       - node
       - --trace-deprecation
@@ -169,11 +201,11 @@ services:
       - ./data/boltz:/boltz-data
       - lnd1-data:/data/lnd
     healthcheck:
-      test: ['CMD-SHELL', "timeout 1 bash -c 'echo > /dev/tcp/127.0.0.1/9000'"]
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:9001/version']
       interval: 2s
-      timeout: 1s
-      retries: 60
-      start_period: 60s
+      timeout: 5s
+      retries: 90
+      start_period: 10s
 
   boltz-backend-nginx:
     image: nginx:alpine
