@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest_asyncio
 from embit.transaction import Transaction
 
@@ -13,14 +11,6 @@ config = BoltzConfig(
     network_liquid="elementsregtest",
     api_url="http://localhost:9001",
 )
-
-
-@pytest_asyncio.fixture(scope="session")
-def event_loop():
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -38,15 +28,13 @@ async def client_liquid():
 @pytest_asyncio.fixture(scope="session")
 async def raw_tx_invalid():
     tx = Transaction()
-    raw_tx = bytes.hex(tx.serialize())
-    yield raw_tx
+    yield bytes.hex(tx.serialize())
 
 
 @pytest_asyncio.fixture(scope="session")
 async def raw_tx():
     tx = Transaction()
-    raw_tx = bytes.hex(tx.serialize())
-    yield raw_tx
+    yield bytes.hex(tx.serialize())
 
 
 @pytest_asyncio.fixture(scope="session")

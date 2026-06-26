@@ -35,10 +35,22 @@ fund_lnd_node() {
   bitcoin-cli-sim -named sendtoaddress address="$address" amount=30 fee_rate=1 > /dev/null
 }
 
+wait-for-boltz(){
+  echo "waiting for boltz backend..."
+  while true; do
+    if curl -sf http://localhost:9001/version > /dev/null 2>&1; then
+      echo "boltz backend is ready!"
+      break
+    fi
+    sleep 2
+  done
+}
+
 regtest-start(){
   regtest-stop
   $COMPOSE_CMD up -d --remove-orphans
   regtest-init
+  wait-for-boltz
 }
 
 regtest-stop(){
@@ -52,14 +64,14 @@ regtest-restart(){
 
 bitcoin-init(){
   echo "init_bitcoin_wallet..."
-  bitcoin-cli-sim createwallet regtest || bitcoin-cli-sim loadwallet regtest
+  bitcoin-cli-sim createwallet regtest 2>/dev/null || bitcoin-cli-sim loadwallet regtest 2>/dev/null || true
   echo "mining 150 blocks..."
   bitcoin-cli-sim -rpcwallet=regtest -generate 150 > /dev/null
 }
 
 elements-init(){
   echo "init_elements_wallet..."
-  elements-cli-sim createwallet regtest || elements-cli-sim loadwallet regtest true
+  elements-cli-sim createwallet regtest 2>/dev/null || elements-cli-sim loadwallet regtest true 2>/dev/null || true
   echo "mining 150 liquid blocks..."
   elements-cli-sim -rpcwallet=regtest -generate 150 > /dev/null
   elements-cli-sim rescanblockchain 0 > /dev/null

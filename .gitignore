@@ -21,6 +21,10 @@ coverage.xml
 dist
 docker/data/*
 
+!docker/data/backend-nginx
+docker/data/backend-nginx/*
+!docker/data/backend-nginx/default.conf
+
 !docker/data/electrs
 docker/data/electrs/*
 !docker/data/electrs/config.toml
